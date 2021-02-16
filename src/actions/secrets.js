@@ -24,27 +24,32 @@ export function fetchSecrets() {
   })
 }
 
-export function saveSecrets(token, secretKey, enableSignedUrls, signingKeyId, signingKeyPrivate) {
+export function saveSecrets(token, secretKey) {
   const doc = {
     _id: 'secrets.mux',
     _type: 'mux.apiKey',
     token,
-    secretKey,
-    enableSignedUrls,
-    signingKeyId,
-    signingKeyPrivate,
+    secretKey
   }
   return client.createOrReplace(doc).then(() => {
     cache.exists = true
-    cache.secrets = {
-      token,
-      secretKey,
-      enableSignedUrls,
-      signingKeyId,
-      signingKeyPrivate,
-    }
+    cache.secrets = { token, secretKey }
     return cache.secrets
   })
+}
+
+export async function testSecrets() {
+  const dataset = client.clientConfig.dataset
+  const result = await client.request({
+    url: `/addons/mux/secrets/${dataset}/test`,
+    withCredentials: true,
+    method: 'GET',
+  })
+
+  if (result.statusCode && result.statusCode !== 200)
+    throw new Error('Unable to reach Sanity')
+  
+  return result
 }
 
 export function createSigningKeys() {
@@ -56,13 +61,20 @@ export function createSigningKeys() {
   })
 }
 
-export function testSecrets() {
-  const dataset = client.clientConfig.dataset
-  return client.request({
-    url: `/addons/mux/secrets/${dataset}/test`,
-    withCredentials: true,
-    method: 'GET',
-  })
+export function saveSigningKeys(enableSignedUrls, signingKeyId, signingKeyPrivate) {
+  return client.patch('secrets.mux')
+    .set({ enableSignedUrls, signingKeyId, signingKeyPrivate })
+    .commit()
+    .then(() => {
+      cache.exists = true
+      cache.secrets = {
+        enableSignedUrls,
+        signingKeyId,
+        signingKeyPrivate,
+        ...cache.secrets
+      }
+      return cache.secrets
+    })
 }
 
 export async function haveValidSigningKeys(signingKeyId, signingKeyPrivate) {

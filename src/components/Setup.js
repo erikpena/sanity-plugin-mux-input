@@ -2,7 +2,7 @@ import React, {Component} from 'react'
 import PropTypes from 'prop-types'
 
 import {uniqueId} from 'lodash'
-import {createSigningKeys, haveValidSigningKeys, saveSecrets, testSecrets} from '../actions/secrets'
+import {createSigningKeys, saveSigningKeys, haveValidSigningKeys, saveSecrets, testSecrets} from '../actions/secrets'
 
 import Button from 'part:@sanity/components/buttons/default'
 import Fieldset from 'part:@sanity/components/fieldsets/default'
@@ -102,43 +102,32 @@ class MuxVideoInputSetup extends Component {
     const enableSignedUrls = this.state.enableSignedUrls || false
     let signingKeyId = this.state.signingKeyId || null
     let signingKeyPrivate = this.state.signingKeyPrivate || null
+    
+    try {
+      await saveSecrets(token, secretKey, enableSignedUrls)
+      
+      const { status } = await testSecrets()
 
-    const hasValidSigningKeys = await haveValidSigningKeys(signingKeyId, signingKeyPrivate)
+      if (!status) throw new Error('Secrets are invalid')
+      
+      if (enableSignedUrls) {
+        const hasValidSigningKeys = await haveValidSigningKeys(signingKeyId, signingKeyPrivate)
 
-    if (!hasValidSigningKeys && enableSignedUrls) {
-      try {
-        const { data } = await createSigningKeys()
-        signingKeyId = data.id
-        signingKeyPrivate = data.private_key
-      } catch ({ message }) {
-        this.setState({ error: message })
+        if (!hasValidSigningKeys) {
+          const { data } = await createSigningKeys()
+          signingKeyId = data.id
+          signingKeyPrivate = data.private_key
+
+          await saveSigningKeys(enableSignedUrls, signingKeyId, signingKeyPrivate)
+        }
       }
-    }
 
-    try {
-      await saveSecrets(token, secretKey, enableSignedUrls, signingKeyId, signingKeyPrivate)
+      this.props.onSave({ token, secretKey, enableSignedUrls, signingKeyId, signingKeyPrivate })
     } catch (err) {
-      handleError(err)
-      return
+      handleError({error: err.message})
+    } finally {
+      this.setState({isLoading: false})
     }
-
-    let result
-
-    try {
-      result = await testSecrets()
-    } catch (err) {
-      handleError(err)
-      return
-    }
-
-    this.setState({isLoading: false})
-
-    if (result.status) {
-      this.props.onSave({token, secretKey, enableSignedUrls, signingKeyId, signingKeyPrivate})
-      return
-    }
-
-    handleError({error: 'Invalid credentials'})
   }
 
   render() {
